@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Configuration & controls
+    url: https://github.com/tyrypyrking/Duckov_GoldenController#configuration
+    about: How to rebind controls and tune aim assist in Settings.json.

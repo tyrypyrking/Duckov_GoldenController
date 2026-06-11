@@ -1,0 +1,97 @@
+name: Release
+
+# Builds the mod and attaches a drop-in zip to a GitHub Release whenever a
+# version tag (v1.0.0, v1.2.3, ...) is pushed.
+#
+# The game's own managed assemblies are proprietary and are NOT stored in this
+# repo. CI fetches them at build time from a private archive you control:
+#
+#   Repository secret  GAME_MANAGED_URL  → a direct-download URL to a .zip whose
+#   contents are the DLLs listed in src/DuckovController/DuckovController.csproj
+#   (i.e. a zip of your <Escape from Duckov>/Duckov_Data/Managed/ files, or just
+#   the referenced subset). The zip is extracted into reference/managed/.
+#
+# Harmony (0Harmony.dll, MIT) is fetched from NuGet — no secret needed.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag/label for a manual build (no Release is published)"
+        required: false
+        default: "manual"
+
+permissions:
+  contents: write   # needed to create the Release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Fetch game managed assemblies (private)
+        env:
+          GAME_MANAGED_URL: ${{ secrets.GAME_MANAGED_URL }}
+        run: |
+          if [ -z "${GAME_MANAGED_URL}" ]; then
+            echo "::error::Secret GAME_MANAGED_URL is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          mkdir -p reference/managed
+          curl -fsSL "${GAME_MANAGED_URL}" -o /tmp/managed.zip
+          unzip -oq /tmp/managed.zip -d /tmp/managed_extract
+          # Flatten: copy every .dll we find into reference/managed/
+          find /tmp/managed_extract -name '*.dll' -exec cp -f {} reference/managed/ \;
+          echo "Managed DLLs present:"
+          ls -1 reference/managed/*.dll | wc -l
+
+      - name: Fetch Harmony (0Harmony.dll, MIT) from NuGet
+        run: |
+          mkdir -p reference/HarmonyLib_workshop
+          dotnet nuget locals all --clear >/dev/null 2>&1 || true
+          # Lib.Harmony ships net472 + netstandard2.0 builds of 0Harmony.dll
+          curl -fsSL "https://www.nuget.org/api/v2/package/Lib.Harmony/2.3.3" -o /tmp/harmony.nupkg
+          unzip -oq /tmp/harmony.nupkg -d /tmp/harmony
+          # Prefer the netstandard2.0 build (matches our netstandard2.1 target); fall back to net472.
+          HARMONY_DLL="$(find /tmp/harmony -path '*netstandard2.0*0Harmony.dll' | head -1)"
+          [ -n "$HARMONY_DLL" ] || HARMONY_DLL="$(find /tmp/harmony -name '0Harmony.dll' | head -1)"
+          cp "$HARMONY_DLL" reference/HarmonyLib_workshop/0Harmony.dll
+          # Also satisfy the build-time reference resolution.
+          cp reference/HarmonyLib_workshop/0Harmony.dll reference/managed/0Harmony.dll
+          test -f reference/managed/0Harmony.dll
+
+      - name: Build (Release)
+        run: dotnet build src/DuckovController/DuckovController.csproj -c Release --no-incremental
+
+      - name: Package drop-in zip
+        run: |
+          chmod +x dist/package_release.sh
+          dist/package_release.sh
+
+      - name: Locate artifact
+        id: artifact
+        run: echo "zip=$(ls dist/release/GoldenController_*.zip | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldenController-${{ github.ref_name }}
+          path: ${{ steps.artifact.outputs.zip }}
+
+      - name: Publish GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.artifact.outputs.zip }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

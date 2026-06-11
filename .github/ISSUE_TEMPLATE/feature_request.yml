@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest an improvement or new controller behavior.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: input
+    id: mod-version
+    attributes:
+      label: Golden Controller version
+      description: "The version you're on (e.g. 1.0.0), so we know what it's relative to."
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's missing or awkward?
+      description: Describe the problem or the screen/interaction that doesn't feel right on a controller.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like instead?
+      description: Describe the behavior or binding you'd like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds you've tried or other approaches. Optional.
+    validations:
+      required: false

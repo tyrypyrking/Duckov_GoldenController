@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>10</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>DuckovController</AssemblyName>
+    <RootNamespace>DuckovController</RootNamespace>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <NoWarn>CS8632;CS0436;CS0108;CS0114;CS0169;CS0414;CS0649</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Deterministic>true</Deterministic>
+    <OutputPath>../../build/</OutputPath>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony"><HintPath>../../reference/managed/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>../../reference/managed/Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Plugins"><HintPath>../../reference/managed/Plugins.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="TeamSoda.Duckov.Core"><HintPath>../../reference/managed/TeamSoda.Duckov.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="TeamSoda.Duckov.Utilities"><HintPath>../../reference/managed/TeamSoda.Duckov.Utilities.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="ItemStatsSystem"><HintPath>../../reference/managed/ItemStatsSystem.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sirenix.OdinInspector.Attributes"><HintPath>../../reference/managed/Sirenix.OdinInspector.Attributes.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.InputSystem"><HintPath>../../reference/managed/Unity.InputSystem.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.TextMeshPro"><HintPath>../../reference/managed/Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>../../reference/managed/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>../../reference/managed/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>../../reference/managed/UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>../../reference/managed/UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIElementsModule"><HintPath>../../reference/managed/UnityEngine.UIElementsModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>../../reference/managed/UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>../../reference/managed/UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>../../reference/managed/UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.ImageConversionModule"><HintPath>../../reference/managed/UnityEngine.ImageConversionModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.PhysicsModule"><HintPath>../../reference/managed/UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AnimationModule"><HintPath>../../reference/managed/UnityEngine.AnimationModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>../../reference/managed/Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UniTask"><HintPath>../../reference/managed/UniTask.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="SodaLocalization"><HintPath>../../reference/managed/SodaLocalization.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="netstandard"><HintPath>../../reference/managed/netstandard.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="mscorlib"><HintPath>../../reference/managed/mscorlib.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System"><HintPath>../../reference/managed/System.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System.Core"><HintPath>../../reference/managed/System.Core.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+</Project>

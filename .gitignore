@@ -1,0 +1,25 @@
+# Build output
+build/
+bin/
+obj/
+
+# Generated release bundles
+dist/release/
+
+# Local IDE / editor state
+.vs/
+.vscode/
+.idea/
+*.user
+
+# Game assemblies — NOT redistributable. Provide these yourself to build.
+# See reference/managed/README.md.
+reference/managed/*.dll
+reference/HarmonyLib_workshop/*.dll
+
+# Raw Kenney input-prompt asset pack (CC0 source material; only the cropped
+# glyphs we ship under dist/assets are committed)
+kenney_input-prompts_1.5/
+
+# Local tooling / session state
+.omc/

@@ -1,0 +1,98 @@
+name: Bug report
+description: Something doesn't work right with Golden Controller.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in the fields
+        below — the more detail, the faster it gets fixed.
+  - type: input
+    id: mod-version
+    attributes:
+      label: Golden Controller version
+      description: "The mod version (e.g. 1.0.0). Find it in info.ini next to the DLL, or on the Release you installed."
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: game-version
+    attributes:
+      label: Game version
+      description: "Escape from Duckov version (Steam → game properties, or the title screen)."
+      placeholder: "V1.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install it?
+      options:
+        - Steam Workshop
+        - Manual (drop-in zip)
+        - Built from source
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Steam Deck
+        - Linux (Proton)
+        - Linux (native)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: controller
+    attributes:
+      label: Controller
+      description: Which controller were you using?
+      options:
+        - Xbox
+        - PlayStation (DualShock / DualSense)
+        - Steam Deck (built-in)
+        - Nintendo Switch Pro
+        - Other / generic
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: How can we trigger it?
+      placeholder: |
+        1. Open the inventory
+        2. Press ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Relevant Settings.json changes
+      description: "Paste any non-default settings (especially AutoAim.Tier and any rebinds). Optional."
+      render: json
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Player.log
+      description: |
+        If the game errored, attach or paste the relevant part of Player.log.
+        Windows: %USERPROFILE%\AppData\LocalLow\TeamSoda\Duckov\Player.log
+        Steam Deck / Proton: ~/.local/share/Steam/steamapps/compatdata/3167020/pfx/drive_c/users/steamuser/AppData/LocalLow/TeamSoda/Duckov/Player.log
+      render: text
+    validations:
+      required: false
