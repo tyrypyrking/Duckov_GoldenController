@@ -148,6 +148,17 @@ namespace DuckovController.Aim
             cfg.BiasRing.CounterSuppressDot = -0.17f;
             // AIM-1 v2: share the (possibly tier-overwritten) bias-ring config with the lock.
             BiasRing.Configure(cfg.BiasRing);
+
+            // DIAG (zero-assist hunt): always-on snapshot of the EFFECTIVE aim state right after a tier
+            // apply. Logged for BOTH boot (LoadOrDefault) and the settings toggle so the two can be
+            // compared line-for-line — if Standard works after a Cheat→Standard cycle but not at boot,
+            // these lines reveal whether the static config differs or whether something else (runtime
+            // state) is the culprit. Log.Info (not Debug_) so it survives DebugLog=false.
+            Log.Info($"[aimapply] tier={aa.Tier} aa.Enabled={aa.Enabled} "
+                + $"biasRing.Enabled={br.Enabled} ringRadiusPx={br.RingRadiusPx:0.#} "
+                + $"=> TierActive={BiasRing.TierActive} recoil.Enabled={rc.Enabled} "
+                + $"magnetism={aim.MagnetismEnabled} slowdown={aim.SlowdownEnabled} "
+                + $"baselineAssist={aim.BaselineAssistEnabled} respectCloak={aa.RespectCloak}");
         }
     }
 }

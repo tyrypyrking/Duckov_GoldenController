@@ -35,6 +35,25 @@ namespace DuckovController.Aim
         private static int _dmgReceiverMask = -1;
         private static int _obstacleMask = -1;
         private static bool _maskResolved;
+        private static bool _masksLogged;
+
+        // DIAG (zero-assist hunt): change-deduped tally so we see WHERE candidates die — e.g.
+        // OverlapHits=0 (mask wrong / no enemies in radius) vs OverlapHits>0 + all in one reject
+        // bucket (NotEnemy / RangeSkip / LosBlocked / OffScreen). Only prints when the tally changes.
+        private static string _lastStatsSig = "";
+        private static void LogStats()
+        {
+            if (!Log.Verbose) return;
+            var s = LastStats;
+            string sig = $"{s.OverlapHits},{s.NoReceiver},{s.NoControl},{s.SelfSkip},{s.HiddenSkip},"
+                + $"{s.CloakSkip},{s.NotEnemy},{s.DeadSkip},{s.RangeSkip},{s.LosBlocked},{s.OffScreen},{s.Accepted}";
+            if (sig == _lastStatsSig) return;
+            _lastStatsSig = sig;
+            Log.Debug_($"[conestats] overlap={s.OverlapHits} noRecv={s.NoReceiver} noCtrl={s.NoControl} "
+                + $"self={s.SelfSkip} hidden={s.HiddenSkip} cloak={s.CloakSkip} notEnemy={s.NotEnemy} "
+                + $"dead={s.DeadSkip} range={s.RangeSkip} los={s.LosBlocked} offScreen={s.OffScreen} "
+                + $"ACCEPTED={s.Accepted}");
+        }
 
         private static void ResolveMasks(InputManager im)
         {
@@ -84,6 +103,16 @@ namespace DuckovController.Aim
         {
             if (im == null || outBuffer == null || outBuffer.Length == 0) return 0;
             ResolveMasks(im);
+
+            // DIAG (zero-assist hunt): one-time dump of the RESOLVED masks. The damageReceiverLayerMask
+            // reflection on InputManager fails (logged "field not found; falling back to 0x8"), so the
+            // OverlapSphere mask + derived obstacle mask are suspect — this shows exactly what they are.
+            if (Log.Verbose && !_masksLogged)
+            {
+                _masksLogged = true;
+                Log.Debug_($"[conestats] masks dmgReceiver=0x{_dmgReceiverMask:X} obstacle=0x{_obstacleMask:X} "
+                    + $"defaultRaycast=0x{Physics.DefaultRaycastLayers:X}");
+            }
 
             // On-screen gate: perception range can exceed Deck screen; locking off-screen feels like cheating.
             // Margin gives edge hysteresis so a target at the edge doesn't flicker.
@@ -191,6 +220,7 @@ namespace DuckovController.Aim
 
             for (int i = 0; i < hitCount; i++) _overlapBuf[i] = null; // release refs so Unity doesn't pin destroyed colliders
 
+            LogStats();
             return written;
         }
     }

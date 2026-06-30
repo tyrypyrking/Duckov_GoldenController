@@ -95,8 +95,15 @@ namespace DuckovController.UI
             if (label != null)
             {
                 rt.SetParent(label.rectTransform, worldPositionStays: false);
-                rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f); // label left-centre
-                rt.anchoredPosition = new Vector2(-gap, 0f);          // sit gap px left of text
+                // Anchor to the label CENTRE offset by half the text width so the glyph seats just
+                // left of the RENDERED text — i.e. INSIDE the button. These action-button labels
+                // (Register/Accept/Decompose/Craft/RepairAll) are full-button-width with centred
+                // text, so anchoring to the label's left EDGE would dump the glyph at the button's
+                // far-left edge (reading as "beside" the button). Mirrors CreateConfirmGlyph.
+                float halfText = 0f;
+                try { halfText = label.preferredWidth * 0.5f; } catch { }
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f); // label centre
+                rt.anchoredPosition = new Vector2(-(halfText + gap), 0f);
             }
             else
             {

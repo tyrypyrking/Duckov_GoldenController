@@ -197,33 +197,103 @@ namespace DuckovController.UI.Menu
             _modWarnGlyphedBtn = null;
         }
 
+        // DifficultySelection Confirm: dedicated X action (button is not in the navigable column).
+        // X glyph parented to the Confirm button, re-created when the button instance changes.
+        private GameObject? _diffConfirmGlyph;
+        private Button? _diffConfirmGlyphedBtn;
+
+        private void EnsureDifficultyConfirmGlyph(Button? confirmBtn)
+        {
+            if (confirmBtn == null) { ClearDifficultyConfirmGlyph(); return; }
+            if (ReferenceEquals(confirmBtn, _diffConfirmGlyphedBtn) && _diffConfirmGlyph != null) return;
+            ClearDifficultyConfirmGlyph();
+            _diffConfirmGlyph = CreateConfirmGlyph(confirmBtn, ButtonGlyph.X);
+            _diffConfirmGlyphedBtn = confirmBtn;
+        }
+
+        private void ClearDifficultyConfirmGlyph()
+        {
+            if (_diffConfirmGlyph != null) Destroy(_diffConfirmGlyph);
+            _diffConfirmGlyph = null;
+            _diffConfirmGlyphedBtn = null;
+        }
+
         // ClosureView: unmanaged vanilla View; ButtonGlyphHints never runs — put A glyph on continueButton directly.
+        // Duckry/island raids show their results through IslandClosureView, which ClosureView delegates to via the
+        // static ClosureView.OverrideClosureView (View.ActiveView stays ClosureView, but ITS continueButton is the
+        // wrong/inactive one — the live button is the override's `confirmButton`). When an override is present we
+        // target that instead, so the existing A-click site (MenuFocusOverlay.cs) drives the right button.
         private Button? _closureGlyphedBtn;
         private GameObject? _closureGlyph;
         private static FieldInfo? _closureContinueField;
         private static System.Type? _closureContinueFieldType;
+        private static FieldInfo? _closureOverrideField;
+        private static FieldInfo? _islandConfirmField;
+        private static System.Type? _islandConfirmFieldType;
+        private static System.Type? _closureViewType;
 
         private void EnsureClosureGlyph()
         {
+            if (Gamepad.current == null) { ClearClosureGlyph(); return; }
+
             Button? btn = null;
-            Duckov.UI.View? view = null;
-            try { view = Duckov.UI.View.ActiveView; } catch { }
-            if (Gamepad.current != null && view != null && view.GetType().Name == "ClosureView")
+
+            // Island/roguelite ("Duckry") raid-end: ClosureView.OverrideClosureView (static IClosureView)
+            // holds the live IslandClosureView whose `confirmButton` is the real accept. CRITICAL: in
+            // ClosureView.ShowAndReturnTask the override's Task() (the whole "Enhancements Gained" reveal +
+            // WaitForConfirm) is awaited BEFORE ClosureView.Open() — so during that screen View.ActiveView
+            // is NOT "ClosureView". We must read the static override directly, ungated by ActiveView, or the
+            // glyph never appears and A never fires. The override is set in IslandClosureView.Awake and
+            // cleared in OnDestroy, so its lifetime brackets the screen exactly.
+            if (_closureViewType == null)
             {
-                var vt = view.GetType();
-                if (_closureContinueField == null || _closureContinueFieldType != vt)
-                {
-                    _closureContinueField = vt.GetField("continueButton",
-                        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                    _closureContinueFieldType = vt;
-                }
-                btn = _closureContinueField?.GetValue(view) as Button;
+                try { _closureViewType = typeof(Duckov.UI.View).Assembly.GetType("Duckov.UI.ClosureView"); }
+                catch { }
             }
-            if (btn == null) { ClearClosureGlyph(); return; }
+            if (_closureViewType != null)
+            {
+                if (_closureOverrideField == null)
+                    _closureOverrideField = _closureViewType.GetField("OverrideClosureView",
+                        BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                var over = _closureOverrideField?.GetValue(null) as UnityEngine.Object;
+                if (over != null)
+                {
+                    var ot = over.GetType();
+                    if (_islandConfirmField == null || _islandConfirmFieldType != ot)
+                    {
+                        _islandConfirmField = ot.GetField("confirmButton",
+                            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                        _islandConfirmFieldType = ot;
+                    }
+                    btn = _islandConfirmField?.GetValue(over) as Button;
+                }
+            }
+
+            // Normal (non-roguelite) raid-end: the ClosureView View itself is open; glyph its continueButton.
+            if (btn == null)
+            {
+                Duckov.UI.View? view = null;
+                try { view = Duckov.UI.View.ActiveView; } catch { }
+                if (view != null && view.GetType().Name == "ClosureView")
+                {
+                    var vt = view.GetType();
+                    if (_closureContinueField == null || _closureContinueFieldType != vt)
+                    {
+                        _closureContinueField = vt.GetField("continueButton",
+                            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                        _closureContinueFieldType = vt;
+                    }
+                    btn = _closureContinueField?.GetValue(view) as Button;
+                }
+            }
+            // Only glyph/click the button while it's actually live (IslandClosureView keeps confirmButton
+            // inactive until the reveal sequence finishes), else A would fire into a hidden button.
+            if (btn == null || !btn.gameObject.activeInHierarchy) { ClearClosureGlyph(); return; }
             if (ReferenceEquals(btn, _closureGlyphedBtn) && _closureGlyph != null) return;
             ClearClosureGlyph();
             _closureGlyph = CreateConfirmGlyph(btn, ButtonGlyph.A);
             _closureGlyphedBtn = btn;
+            Log.Info($"MenuOverlay: ClosureView accept glyph latched on '{btn.gameObject.name}' (override path)");
         }
 
         private void ClearClosureGlyph()

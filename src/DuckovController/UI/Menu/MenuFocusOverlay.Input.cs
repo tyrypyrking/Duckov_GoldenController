@@ -20,6 +20,11 @@ namespace DuckovController.UI.Menu
         {
             if (_focused == null) return;
 
+            // Sample the left stick as a virtual d-pad ONCE per frame, before any sub-handler reads
+            // direction. All overlay nav (this method + the Handle* helpers below) then treats stick
+            // and d-pad identically via DirEdge/DirHeld.
+            _menuStick.Sample(pad.leftStick.ReadValue(), enabled: true);
+
             // Credits: only Return is interactable — route dpad/stick to ScrollRect.
             if (HandleCreditsScroll(pad)) return;
 
@@ -35,10 +40,10 @@ namespace DuckovController.UI.Menu
             // ModManagerUI: shoulders/triggers = OrderUp/OrderDown; dpad U/D = row nav.
             if (HandleModReorder(pad)) return;
 
-            bool upEdge    = pad.dpad.up.wasPressedThisFrame;
-            bool downEdge  = pad.dpad.down.wasPressedThisFrame;
-            bool upHeld    = pad.dpad.up.isPressed;
-            bool downHeld  = pad.dpad.down.isPressed;
+            bool upEdge    = DirEdge(pad, NavDir.Up);
+            bool downEdge  = DirEdge(pad, NavDir.Down);
+            bool upHeld    = DirHeld(pad, NavDir.Up);
+            bool downHeld  = DirHeld(pad, NavDir.Down);
 
             int dir = 0;
             if (upEdge)        { dir = -1; ResetHold(); }
@@ -108,10 +113,10 @@ namespace DuckovController.UI.Menu
                     ? 1f
                     : Mathf.Max(0.01f, (slider.maxValue - slider.minValue) * 0.01f));
 
-            bool leftEdge  = pad.dpad.left.wasPressedThisFrame;
-            bool rightEdge = pad.dpad.right.wasPressedThisFrame;
-            bool leftHeld  = pad.dpad.left.isPressed;
-            bool rightHeld = pad.dpad.right.isPressed;
+            bool leftEdge  = DirEdge(pad, NavDir.Left);
+            bool rightEdge = DirEdge(pad, NavDir.Right);
+            bool leftHeld  = DirHeld(pad, NavDir.Left);
+            bool rightHeld = DirHeld(pad, NavDir.Right);
 
             int dir = 0;
             if (leftEdge)        { dir = -1; _hAxisHoldStarted = Time.unscaledTime; _lastHAxisAt = Time.unscaledTime; }
@@ -144,6 +149,16 @@ namespace DuckovController.UI.Menu
         private void HandleCancel(Gamepad pad)
         {
             if (!pad.buttonEast.wasPressedThisFrame) return;
+
+            // Color-picker sub-panel owns B: revert to the open-time color + close. Must run before
+            // any other B handling so it does NOT bubble to the CC-level cancel that exits the creator.
+            if (_ccOpenPicker != null)
+            {
+                Log.Info("MenuOverlay HandleCancel: color-picker B → revert + close");
+                PickerCancel();
+                return;
+            }
+
             if (_menuRoot == null) return;
             string focusName = _focused != null ? _focused.gameObject.name : "<null>";
             string effName   = _effectiveRoot != null ? _effectiveRoot.gameObject.name : "<null>";
@@ -385,15 +400,27 @@ namespace DuckovController.UI.Menu
 
         private bool HandleDifficultyNav(Gamepad pad)
         {
-            if (!IsInsideDifficultySelection() || _focused == null) return false;
+            if (!IsInsideDifficultySelection() || _focused == null)
+            {
+                ClearDifficultyConfirmGlyph();
+                return false;
+            }
 
-            bool leftEdge   = pad.dpad.left.wasPressedThisFrame;
-            bool rightEdge  = pad.dpad.right.wasPressedThisFrame;
-            bool upEdge     = pad.dpad.up.wasPressedThisFrame;
-            bool downEdge   = pad.dpad.down.wasPressedThisFrame;
-            bool leftHeld   = pad.dpad.left.isPressed;
-            bool rightHeld  = pad.dpad.right.isPressed;
-            bool anyDpad    = leftHeld || rightHeld || pad.dpad.up.isPressed || pad.dpad.down.isPressed;
+            // Confirm is a dedicated X action (focus-independent), glyphed like other panels.
+            var confirmBtn = FindDifficultyConfirmButton();
+            EnsureDifficultyConfirmGlyph(confirmBtn);
+            if (pad.buttonWest.wasPressedThisFrame && confirmBtn != null && IsSelectableUsable(confirmBtn))
+            {
+                Log.Info("MenuOverlay difficulty: X → Confirm");
+                DuckovController.UI.PointerEventDispatcher.Click(confirmBtn.gameObject);
+                return true;
+            }
+
+            bool leftEdge   = DirEdge(pad, NavDir.Left);
+            bool rightEdge  = DirEdge(pad, NavDir.Right);
+            bool leftHeld   = DirHeld(pad, NavDir.Left);
+            bool rightHeld  = DirHeld(pad, NavDir.Right);
+            bool anyDpad    = leftHeld || rightHeld || DirHeld(pad, NavDir.Up) || DirHeld(pad, NavDir.Down);
             if (!anyDpad) { _navHoldStarted = Time.unscaledTime; }
 
             int hdir = 0;
@@ -409,40 +436,28 @@ namespace DuckovController.UI.Menu
                 }
             }
 
+            // Column is cards only (Confirm excluded); D-pad/stick cycles cards horizontally.
             var col = BuildDifficultyColumn();
             if (col.Count == 0) return true;
-            int confirmIdx = col.Count - 1;
-            bool hasConfirm = col[confirmIdx].gameObject.name == "Confirm";
-            int cardsEnd = hasConfirm ? confirmIdx : col.Count;
             int curIdx = col.FindIndex(s => ReferenceEquals(s, _focused));
-            if (curIdx < 0) curIdx = _lastDifficultyCardIdx;
-
-            if (hasConfirm)
-            {
-                if (downEdge && curIdx < cardsEnd)
-                {
-                    _lastDifficultyCardIdx = curIdx;
-                    _focused = col[confirmIdx];
-                    Log.Info("MenuOverlay difficulty nav: → Confirm");
-                    return true;
-                }
-                if (upEdge && curIdx == confirmIdx)
-                {
-                    int target = Mathf.Clamp(_lastDifficultyCardIdx, 0, cardsEnd - 1);
-                    _focused = col[target];
-                    Log.Info($"MenuOverlay difficulty nav: ← card[{target}]");
-                    return true;
-                }
-            }
+            if (curIdx < 0) curIdx = Mathf.Clamp(_lastDifficultyCardIdx, 0, col.Count - 1);
 
             if (hdir == 0) return true;
-            if (curIdx >= cardsEnd) return true;
-            int nextIdx = Mathf.Clamp(curIdx + hdir, 0, cardsEnd - 1);
+            int nextIdx = Mathf.Clamp(curIdx + hdir, 0, col.Count - 1);
             if (nextIdx == curIdx) return true;
             _focused = col[nextIdx];
             _lastDifficultyCardIdx = nextIdx;
             Log.Info($"MenuOverlay difficulty nav: card[{curIdx}] → card[{nextIdx}] name={_focused.gameObject.name}");
             return true;
+        }
+
+        // The Confirm button on the difficulty screen (not in the navigable column).
+        private Button? FindDifficultyConfirmButton()
+        {
+            var ds = FindAncestorByName(_effectiveRoot, "DifficultySelection") ?? _menuRoot;
+            if (ds == null) return null;
+            var confirmT = FindDescendantByName(ds, "Confirm");
+            return confirmT != null ? confirmT.GetComponent<Button>() : null;
         }
 
         // First active Button with a FadeGroupButton component under root.

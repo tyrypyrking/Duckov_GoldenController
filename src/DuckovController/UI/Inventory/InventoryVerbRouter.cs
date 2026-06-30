@@ -90,6 +90,8 @@ namespace DuckovController.UI.Inventory
             ViewVerbMapRegistry.Register(new VerbMaps.CraftViewVerbMap());
             ViewVerbMapRegistry.Register(new VerbMaps.ATMViewVerbMap());
             ViewVerbMapRegistry.Register(new VerbMaps.MasterKeysRegisterViewVerbMap());
+            ViewVerbMapRegistry.Register(new VerbMaps.FormulasRegisterViewVerbMap());
+            ViewVerbMapRegistry.Register(new VerbMaps.PlayerStatsViewVerbMap());
             ViewVerbMapRegistry.Register(new VerbMaps.StorageDockViewVerbMap());
             ViewVerbMapRegistry.Register(new VerbMaps.BuilderViewVerbMap());
         }

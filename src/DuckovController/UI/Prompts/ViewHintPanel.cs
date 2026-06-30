@@ -13,18 +13,18 @@ namespace DuckovController.UI.Prompts
         // Set by ModBehaviour AFTER AddComponent (OnEnable runs inside AddComponent — subscribe lazily in Update).
         internal IButtonPromptSource? Source;
 
-        // measured geometry (GamingConsoleHUD_20260531_210655_405.txt)
-        private const float MARGIN = 32f;
-        private const float PAD = 16f;
-        private const float ROW_W = 302.1f;
-        private const float ROW_H = 52.1f;
-        private const float PITCH = 58.1f;  // ROW_H + ~6px so stacked glyphs don't touch
-        private const float CONTENT_W = 334.1f;
-        private const float ICON = 52.1f;
-        private const float ICON_X = 26.1f;
-        private const float ICON2_X = 92.2f;  // paired second glyph (ICON_X + ICON + ~14 spacer)
-        private const float LABEL_X = 185.1f;
-        private const float LABEL_W = 234f;
+        // measured geometry (GamingConsoleHUD_20260531_210655_405.txt) — shared via HintPanelChrome.
+        private const float MARGIN = HintPanelChrome.MARGIN;
+        private const float PAD = HintPanelChrome.PAD;
+        private const float ROW_W = HintPanelChrome.ROW_W;
+        private const float ROW_H = HintPanelChrome.ROW_H;
+        private const float PITCH = HintPanelChrome.PITCH;
+        private const float CONTENT_W = HintPanelChrome.CONTENT_W;
+        private const float ICON = HintPanelChrome.ICON;
+        private const float ICON_X = HintPanelChrome.ICON_X;
+        private const float ICON2_X = HintPanelChrome.ICON2_X;
+        private const float LABEL_X = HintPanelChrome.LABEL_X;
+        private const float LABEL_W = HintPanelChrome.LABEL_W;
 
         // horizontal-strip metrics (trader / craft views)
         private const float H_CELL_GAP = 14f;   // gap between adjacent prompt cells
@@ -35,15 +35,14 @@ namespace DuckovController.UI.Prompts
         private Image? _bg;
         private Canvas? _parentCanvas;
         private readonly List<Row> _rows = new();
-        private bool _subscribed;
+        private bool _subscribed;          // Source.OnPromptsChanged
+        private bool _sceneHooksSubscribed; // View.OnActiveViewChanged + LevelManager.OnAfterLevelInitialized
         private bool _dirty;
 
         // Overlay-specific prompts (e.g. the Split dialogue) shown in place of the active view's
         // verb-map prompts. Set/cleared by GridFocusController; null = use the router source.
         internal static System.Collections.Generic.IReadOnlyList<PromptEntry>? Override;
         private System.Collections.Generic.IReadOnlyList<PromptEntry>? _appliedOverride;
-
-        private static Sprite? _bgSprite;
 
         private sealed class Row
         {
@@ -56,6 +55,21 @@ namespace DuckovController.UI.Prompts
         // lifecycle
 
         private void OnPromptsChanged() => _dirty = true;
+
+        // The active View (and on a raid, the whole UI canvas) can change/be destroyed out from under us.
+        // View.ActiveView is a static cleared only in OnClose, so a LoadSceneMode.Single raid can leave it
+        // pointing at a destroyed View whose canvas is mid-teardown — the per-frame canvas-resolve then
+        // latches a stale handle and the panel can stay hidden forever. Drop the cached canvas/root handles
+        // and force a rebuild under the live canvas next Update. (View.OnActiveViewChanged is parameterless;
+        // read View.ActiveView inside if needed.)
+        private void OnSceneContextChanged()
+        {
+            if (_root != null) { Destroy(_root.gameObject); }
+            _root = null;
+            _rows.Clear();
+            _parentCanvas = null;
+            _dirty = true;
+        }
 
         private void Update()
         {
@@ -71,6 +85,16 @@ namespace DuckovController.UI.Prompts
                 _dirty = true;
             }
 
+            // Event-driven reset: a raid (LoadSceneMode.Single) destroys + recreates the UI canvas and Views,
+            // so rebuild on active-view change and on every level (re)load instead of trusting the per-frame
+            // canvas-resolve to self-heal off a possibly-destroyed View.ActiveView.
+            if (!_sceneHooksSubscribed)
+            {
+                Duckov.UI.View.OnActiveViewChanged += OnSceneContextChanged;
+                LevelManager.OnAfterLevelInitialized += OnSceneContextChanged;
+                _sceneHooksSubscribed = true;
+            }
+
             // Empty prompts = out of scope (Default verb map returns none for non-item focus).
             // GridFocusController gate prevents residue over unmanaged views (e.g. ClosureView):
             // router's _currentMap is frozen there and keeps returning stale prompts.
@@ -83,11 +107,14 @@ namespace DuckovController.UI.Prompts
                 && Time.timeScale != 0f
                 && Duckov.UI.View.ActiveView != null
                 && DuckovController.UI.GridFocusController.Instance?.IsHandlingActiveView() == true
-                && effective.Count > 0;
+                && CountVisible(effective) > 0;
 
             if (!show) { HidePanel(); return; }
 
-            var canvas = (Duckov.UI.View.ActiveView as Component)?.GetComponentInParent<Canvas>();
+            // includeInactive: the new base View can be ActiveView while its parent canvas is briefly
+            // inactive (scene activation / fade-in) — without this, GetComponentInParent returns null and
+            // the panel drops for that window. Genuinely-null (no canvas at all) still hides + returns.
+            var canvas = (Duckov.UI.View.ActiveView as Component)?.GetComponentInParent<Canvas>(includeInactive: true);
             if (canvas == null) { HidePanel(); return; }
 
             bool canvasChanged = _parentCanvas != canvas;
@@ -112,6 +139,14 @@ namespace DuckovController.UI.Prompts
                 Source.OnPromptsChanged -= OnPromptsChanged;
                 _subscribed = false;
             }
+            // Static-event handlers must be released or they leak across a mod enable/disable cycle
+            // (the GO persists under DontDestroyOnLoad → a re-enable would double-subscribe).
+            if (_sceneHooksSubscribed)
+            {
+                Duckov.UI.View.OnActiveViewChanged -= OnSceneContextChanged;
+                LevelManager.OnAfterLevelInitialized -= OnSceneContextChanged;
+                _sceneHooksSubscribed = false;
+            }
             HidePanel();
         }
 
@@ -119,10 +154,14 @@ namespace DuckovController.UI.Prompts
 
         private void EnsureBuilt(Canvas canvas)
         {
-            if (_root != null && _parentCanvas == canvas) return;
+            // Don't trust the cache: rebuild if the root or cached canvas is null/destroyed, or the live
+            // canvas differs. Unity's == treats a destroyed object as null, so a destroyed _root/_parentCanvas
+            // falls through to the rebuild below; never carry a destroyed handle forward.
+            if (_root != null && _parentCanvas != null && _parentCanvas == canvas) return;
             if (_root != null) { Destroy(_root.gameObject); _root = null; _rows.Clear(); }
+            _parentCanvas = null; // drop any destroyed handle before re-pinning
 
-            EnsureBgSprite();
+            var bgSprite = HintPanelChrome.RoundedBgSprite();
 
             var go = new GameObject("DuckovController.ViewHintPanel",
                 typeof(RectTransform), typeof(LayoutElement), typeof(Image));
@@ -136,10 +175,10 @@ namespace DuckovController.UI.Prompts
             _root.localScale = Vector3.one;
 
             _bg = go.GetComponent<Image>();
-            _bg.sprite = _bgSprite;
+            _bg.sprite = bgSprite;
             _bg.type = Image.Type.Sliced;
             _bg.raycastTarget = false;
-            _bg.color = new Color(0.05f, 0.06f, 0.09f, 0.5f); // dark, ~50% alpha
+            _bg.color = HintPanelChrome.BgColor;
 
             _parentCanvas = canvas;
         }
@@ -199,14 +238,53 @@ namespace DuckovController.UI.Prompts
             return row;
         }
 
+        // Hint-row filtering: drop rows every pad user already knows (A=Select, D-pad/stick=Move),
+        // so the panel only shows non-obvious, screen-specific verbs. Single-glyph rows only — a paired
+        // row (e.g. LT+RT "Pane") is always an affordance, never obvious. Match is (glyph, label) exact;
+        // any label NOT in the obvious set is kept, so new verbs surface by default.
+        private static bool IsObvious(in PromptEntry e)
+        {
+            if (e.Glyph2.HasValue) return false; // paired rows are affordances, keep
+            switch (e.Glyph)
+            {
+                case ButtonGlyph.A:
+                    return e.Label is "Select" or "Choose" or "Press" or "Pick";
+                case ButtonGlyph.DPad:
+                case ButtonGlyph.DPadUp:
+                case ButtonGlyph.LStick:
+                case ButtonGlyph.RStick:
+                    // Pure movement/selection by the nav sticks/d-pad — universally understood.
+                    return e.Label is "Move" or "Select" or "Navigate";
+                default:
+                    return false;
+            }
+        }
+
+        private static int CountVisible(System.Collections.Generic.IReadOnlyList<PromptEntry> prompts)
+        {
+            int c = 0;
+            for (int i = 0; i < prompts.Count; i++)
+                if (!IsObvious(prompts[i])) c++;
+            return c;
+        }
+
+        private static System.Collections.Generic.List<PromptEntry> FilterObvious(
+            System.Collections.Generic.IReadOnlyList<PromptEntry> prompts)
+        {
+            var kept = new System.Collections.Generic.List<PromptEntry>(prompts.Count);
+            for (int i = 0; i < prompts.Count; i++)
+                if (!IsObvious(prompts[i])) kept.Add(prompts[i]);
+            return kept;
+        }
+
         // Rebuild rows from the source's current prompt list and size the panel.
         private void Refresh(Canvas canvas)
         {
             if (_root == null || Source == null) return;
-            var prompts = Override ?? Source.CurrentPrompts;
+            var prompts = FilterObvious(Override ?? Source.CurrentPrompts);
             int n = prompts.Count;
 
-            var font = ResolveFont(canvas);
+            var font = HintPanelChrome.ResolveFont(canvas);
 
             for (int i = 0; i < n; i++)
             {
@@ -293,70 +371,15 @@ namespace DuckovController.UI.Prompts
             _root.sizeDelta = new Vector2(width, panelH);
         }
 
-        // Grab any TMP font from the active canvas; fall back to TMP default. Per-refresh (canvas can change).
-        private static TMP_FontAsset? ResolveFont(Canvas canvas)
-        {
-            var tmp = canvas.GetComponentInChildren<TextMeshProUGUI>(includeInactive: false);
-            if (tmp != null && tmp.font != null) return tmp.font;
-            return TMP_Settings.defaultFontAsset;
-        }
-
-        private static void EnsureBgSprite()
-        {
-            if (_bgSprite != null) return;
-            const int size = 64;
-            const float cornerRadius = 18f;
-            const float softness = 1.5f;
-            const float margin = 1f;
-            const int slice = 22;
-
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            {
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear,
-            };
-            float c = size * 0.5f;
-            float half = c - margin;
-            var px = new Color32[size * size];
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = (x + 0.5f) - c;
-                    float dy = (y + 0.5f) - c;
-                    float sd = SdRoundBox(dx, dy, half, half, cornerRadius);
-                    // Alpha 1 inside (sd<=0), fades over [0,softness].
-                    // Use hand-rolled SmoothStep01, NOT Mathf.SmoothStep (lerps from/to → blanks texture).
-                    float a = 1f - SmoothStep01(0f, softness, sd);
-                    px[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(Mathf.Clamp01(a) * 255f));
-                }
-            }
-            tex.SetPixels32(px);
-            tex.Apply(false, false);
-
-            var border = new Vector4(slice, slice, slice, slice);
-            _bgSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f),
-                pixelsPerUnit: 100f, extrude: 0, meshType: SpriteMeshType.FullRect, border: border);
-        }
-
-        private static float SmoothStep01(float edge0, float edge1, float x)
-        {
-            if (edge1 <= edge0) return x < edge0 ? 0f : 1f;
-            float t = Mathf.Clamp01((x - edge0) / (edge1 - edge0));
-            return t * t * (3f - 2f * t);
-        }
-
-        private static float SdRoundBox(float px, float py, float bx, float by, float r)
-        {
-            float qx = Mathf.Abs(px) - bx + r;
-            float qy = Mathf.Abs(py) - by + r;
-            float outside = Mathf.Sqrt(Mathf.Max(qx, 0f) * Mathf.Max(qx, 0f) + Mathf.Max(qy, 0f) * Mathf.Max(qy, 0f));
-            float inside = Mathf.Min(Mathf.Max(qx, qy), 0f);
-            return outside + inside - r;
-        }
-
         private void OnDestroy()
         {
+            // OnDisable runs before OnDestroy and clears these, but guard against a surviving subscription.
+            if (_sceneHooksSubscribed)
+            {
+                Duckov.UI.View.OnActiveViewChanged -= OnSceneContextChanged;
+                LevelManager.OnAfterLevelInitialized -= OnSceneContextChanged;
+                _sceneHooksSubscribed = false;
+            }
             if (_root != null) Destroy(_root.gameObject);
             _root = null;
             _bg = null;

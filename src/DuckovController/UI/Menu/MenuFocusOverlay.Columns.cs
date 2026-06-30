@@ -144,13 +144,9 @@ namespace DuckovController.UI.Menu
                 cards.Sort((a, b) => a.transform.position.x.CompareTo(b.transform.position.x));
                 result.AddRange(cards);
             }
-            // Confirm at the bottom of the panel.
-            var confirmT = FindDescendantByName(ds, "Confirm");
-            if (confirmT != null)
-            {
-                var b = confirmT.GetComponent<Button>();
-                if (b != null && IsSelectableUsable(b)) result.Add(b);
-            }
+            // Confirm is intentionally NOT added to the navigable column: it's a dedicated X action
+            // (glyphed + fired focus-independently in HandleDifficultyNav), mirroring other panels.
+            // D-pad/stick therefore only cycles the difficulty cards.
             return result;
         }
 

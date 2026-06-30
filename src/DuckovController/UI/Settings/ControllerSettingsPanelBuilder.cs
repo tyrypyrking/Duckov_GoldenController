@@ -45,21 +45,24 @@ namespace DuckovController.UI.Settings
             panel.Cfg = cfg;
             panel.SettingsPath = settingsPath;
 
-            // Match vanilla Common content: 1224×464, pivot center, anchored (620,-240).
-            root.anchorMin = new Vector2(0.5f, 0.5f);
-            root.anchorMax = new Vector2(0.5f, 0.5f);
-            root.pivot = new Vector2(0.5f, 0.5f);
-            root.sizeDelta = new Vector2(1224f, 464f);
-            root.anchoredPosition = new Vector2(620f, -240f);
+            // Fill the host container the way native tabs do: mirror the live Common-tab
+            // content RectTransform (stretch anchors) instead of baking main-menu numbers.
+            // The pause-menu OptionsPanel container is larger; stretch anchors adapt to both
+            // hosts automatically (they're container-relative), and copying the live sibling
+            // sidesteps the CanvasScaler/Deck-units pitfall that baking numbers would hit.
+            StretchRootToHost(root);
 
-            // LayoutElement: parent's layout group collapses height to 0 without this.
+            // LayoutElement: with stretch anchors the parent rect drives size, so a fixed
+            // min/preferred lock would fight it. Keep an (unlocked) LayoutElement only to
+            // survive a layout-group-controlled ancestor collapsing height to 0; flexible
+            // weights let the parent rect win.
             var rootLe = root.GetComponent<LayoutElement>() ?? root.gameObject.AddComponent<LayoutElement>();
-            rootLe.preferredWidth = 1224f;
-            rootLe.preferredHeight = 464f;
-            rootLe.minWidth = 1224f;
-            rootLe.minHeight = 464f;
-            rootLe.flexibleWidth = 0f;
-            rootLe.flexibleHeight = 0f;
+            rootLe.minWidth = -1f;
+            rootLe.minHeight = -1f;
+            rootLe.preferredWidth = -1f;
+            rootLe.preferredHeight = -1f;
+            rootLe.flexibleWidth = 1f;
+            rootLe.flexibleHeight = 1f;
 
             // Drop layout components from root; rows use absolute positioning inside inner ScrollRect.
             var oldVlg = root.GetComponent<VerticalLayoutGroup>();
@@ -67,12 +70,13 @@ namespace DuckovController.UI.Settings
             var oldCsf = root.GetComponent<ContentSizeFitter>();
             if (oldCsf != null) UnityEngine.Object.DestroyImmediate(oldCsf);
 
-            Log.Info($"BuildInto: root after reset — pivot=({root.pivot.x:F2},{root.pivot.y:F2}) "
-                + $"size=({root.sizeDelta.x:F0},{root.sizeDelta.y:F0}) "
-                + $"anchored=({root.anchoredPosition.x:F0},{root.anchoredPosition.y:F0}) "
+            Log.Info($"BuildInto: root after stretch — "
+                + $"anchors=({root.anchorMin.x:F2},{root.anchorMin.y:F2})-({root.anchorMax.x:F2},{root.anchorMax.y:F2}) "
+                + $"pivot=({root.pivot.x:F2},{root.pivot.y:F2}) "
+                + $"size=({root.rect.width:F0},{root.rect.height:F0}) "
                 + $"parent={root.parent?.name ?? "<null>"} active={root.gameObject.activeInHierarchy}");
 
-            // Inner ScrollRect fills 1224×464; rows scroll independently of the game's outer ScrollView.
+            // Inner ScrollRect stretches to fill root; rows scroll independently of the game's outer ScrollView.
             var listRoot = CreateInnerScroll(root);
 
             // Reset row-index counter for this content root.
@@ -119,7 +123,10 @@ namespace DuckovController.UI.Settings
                 panel.Sections.Add(record);
             }
 
-            // Size scroll Content to fit all rows.
+            // Size scroll Content to fit all rows. Rebuild first so the freshly-created
+            // stretch scroll/viewport resolve their rects (viewport height drives the
+            // Content floor); without this the viewport reads 0 and the floor falls back.
+            LayoutRebuilder.ForceRebuildLayoutImmediate(root);
             int rowCount = _rowIndexByParent.TryGetValue(listRoot.GetInstanceID(), out int n) ? n : 0;
             SetContentHeight(listRoot, rowCount);
 
