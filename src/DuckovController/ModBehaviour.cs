@@ -41,10 +41,13 @@ namespace DuckovController
         {
             try
             {
-                _settingsPath = Path.Combine(info.path, "Settings.json");
+                // Config lives under persistentDataPath/GoldenController so a Workshop content
+                // update (which replaces the mod folder) can't wipe a player's tuned settings.
+                // Seeded from the mod folder's Settings.default.json; legacy in-folder config migrated.
+                _settingsPath = ControllerConfigLoader.ResolveConfigPath(info.path, out var seedDir);
                 // Bundled glyph PNGs live under <mod>/assets/glyphs/<profile>/.
                 DuckovController.UI.Prompts.GlyphProvider.ModRoot = info.path;
-                _config = ControllerConfigLoader.LoadOrDefault(_settingsPath);
+                _config = ControllerConfigLoader.LoadOrDefault(_settingsPath, seedDir);
                 Log.Verbose = _config.Diagnostics.DebugLog || _config.Diagnostics.DevMode;
                 Log.Info($"Loaded config from {_settingsPath}");
 

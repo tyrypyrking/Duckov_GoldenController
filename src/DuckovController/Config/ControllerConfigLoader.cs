@@ -18,7 +18,7 @@ namespace DuckovController.Config
         // (main thread). Reference assignment is atomic in .NET.
         internal static volatile ControllerConfig? Pending;
 
-        internal static ControllerConfig LoadOrDefault(string path)
+        internal static ControllerConfig LoadOrDefault(string path, string? seedDir = null)
         {
             _path = path;
             try
@@ -34,10 +34,13 @@ namespace DuckovController.Config
 
                 if (!File.Exists(path))
                 {
-                    // First install: seed from a sibling Settings.default.json if the release
-                    // shipped one, else pure C# defaults. Then materialize the file on disk.
+                    // First install: seed from Settings.default.json shipped in the mod folder
+                    // (seedDir), else pure C# defaults. Then materialize the file on disk.
+                    // seedDir is separate from the config dir because the config now lives in
+                    // persistentDataPath while the seed ships inside the (replaceable) mod folder.
                     var fresh = new ControllerConfig();
-                    var defaultPath = Path.Combine(Path.GetDirectoryName(path)!, "Settings.default.json");
+                    var dir = seedDir ?? Path.GetDirectoryName(path)!;
+                    var defaultPath = Path.Combine(dir, "Settings.default.json");
                     if (File.Exists(defaultPath))
                     {
                         JsonConvert.PopulateObject(File.ReadAllText(defaultPath), fresh, settings);
@@ -62,6 +65,39 @@ namespace DuckovController.Config
                 Log.Error($"Failed to load {path}: {e.Message}. Using defaults.");
                 return new ControllerConfig();
             }
+        }
+
+        // Resolve the live config path under persistentDataPath/GoldenController so it survives
+        // Workshop content replacement (mod-folder files are wiped on every update). Seeds from the
+        // mod folder's Settings.default.json on first run; one-time migrates a legacy in-folder
+        // Settings.json written by older versions. Returns the persistent path; seedDirOut receives
+        // the mod folder (where Settings.default.json lives).
+        internal static string ResolveConfigPath(string modFolder, out string seedDirOut)
+        {
+            seedDirOut = modFolder;
+            string dir;
+            try { dir = Path.Combine(UnityEngine.Application.persistentDataPath, "GoldenController"); }
+            catch { return Path.Combine(modFolder, "Settings.json"); } // fallback: legacy location
+
+            try { Directory.CreateDirectory(dir); } catch { }
+            var persistent = Path.Combine(dir, "Settings.json");
+
+            // One-time migration: an older build wrote Settings.json inside the mod folder. If the
+            // new location has none yet but a legacy one exists, carry it over so the user keeps
+            // their tuned config exactly once. We do NOT delete the legacy file (mod folder is
+            // replaced on update anyway); the new file then wins on every subsequent launch.
+            try
+            {
+                var legacy = Path.Combine(modFolder, "Settings.json");
+                if (!File.Exists(persistent) && File.Exists(legacy))
+                {
+                    File.Copy(legacy, persistent, overwrite: false);
+                    Log.Info($"Migrated config from mod folder to {persistent}");
+                }
+            }
+            catch (Exception e) { Log.Warn($"Config migration skipped: {e.Message}"); }
+
+            return persistent;
         }
 
         internal static void Save(ControllerConfig cfg, string path)
