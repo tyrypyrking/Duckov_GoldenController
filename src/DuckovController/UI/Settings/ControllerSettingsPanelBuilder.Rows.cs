@@ -119,7 +119,7 @@ namespace DuckovController.UI.Settings
             };
         }
 
-        // Clone slider row: lock sizeDelta to 1224×50, step Y per row index.
+        // Clone slider row: lock sizeDelta to RowWidth×RowHeight, step Y per row index.
         private static GameObject? CloneSliderRow(GameObject template, RectTransform parent)
         {
             if (template == null) return null;
@@ -139,17 +139,19 @@ namespace DuckovController.UI.Settings
                 foreach (var hlg in clone.GetComponents<HorizontalOrVerticalLayoutGroup>())
                     UnityEngine.Object.DestroyImmediate(hlg);
 
-                rt.sizeDelta = new Vector2(1224f, 50f);
+                rt.sizeDelta = new Vector2(RowWidth, RowHeight);
+
+                // Center the fixed-width row in the host-dependent Content; then stack by Y.
+                ApplyRowHorizontalLayout(rt);
                 var pos = rt.anchoredPosition;
-                pos.x = 612f;
                 pos.y = RowYStart - idx * RowYStep;
                 rt.anchoredPosition = pos;
 
                 var le = clone.GetComponent<LayoutElement>() ?? clone.AddComponent<LayoutElement>();
-                le.minWidth = 1224f;
-                le.preferredWidth = 1224f;
-                le.minHeight = 50f;
-                le.preferredHeight = 50f;
+                le.minWidth = RowWidth;
+                le.preferredWidth = RowWidth;
+                le.minHeight = RowHeight;
+                le.preferredHeight = RowHeight;
             }
             if (_collectRowsInto != null && rt != null) _collectRowsInto.Add(rt);
             return clone;

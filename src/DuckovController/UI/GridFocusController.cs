@@ -362,6 +362,18 @@ namespace DuckovController.UI
                     Cursor.visible = false;
             }
 
+            // "New craft" popup (StrongNotification) floats over the register view but is not a View,
+            // and the pad can't dismiss it natively (UI_Confirm isn't bound by default). Own input
+            // here while it's up so A/B dismiss it. Checked BEFORE the IsSupportedView gate so it
+            // works regardless of what (if anything) sits underneath.
+            if (IsStrongNotificationOpen())
+            {
+                HandleStrongNotification();
+                return;
+            }
+            _strongNotifWasOpen = false;
+            _strongNotifAArmed = false;
+
             var view = View.ActiveView;
             if (view == null || !IsSupportedView(view))
             {
@@ -378,6 +390,7 @@ namespace DuckovController.UI
                 }
                 RevertExitGlyph();
                 RevertButtonHints();
+                if (_questRewardWasOpen) EndQuestReward(); // don't leak the modal's glyph/prompt override out of the view
                 _activeView = null;
                 _pendingDiscoveryView = null;
                 return;
@@ -404,6 +417,19 @@ namespace DuckovController.UI
                 ForgetMiniMapDriftMemory(); // UI-2: drop toolbox pos memory on view change
                 _graphDirty = true;
                 RevertExitGlyph(); // restore the previous view's exit icon
+            }
+
+            // Quest reward-claim modal (QuestCompletePanel) floats over the quest board after a turn-in
+            // but is NOT a View. While it's up it owns input — A claims the top reward (cycle), X claims
+            // all, B skips — and the board is fully locked out. Mirrors the Split overlay handoff.
+            {
+                var rewardPanel = GetActiveQuestRewardPanel();
+                if (rewardPanel != null)
+                {
+                    HandleQuestReward(rewardPanel);
+                    return;
+                }
+                if (_questRewardWasOpen) EndQuestReward(); // modal closed → drop glyph + prompt override
             }
 
             // Split overlay (opened from the op-menu) floats over this view but is NOT a View, so it

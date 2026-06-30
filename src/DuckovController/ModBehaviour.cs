@@ -54,6 +54,8 @@ namespace DuckovController
 
                 DuckovController.Diagnostics.PerfFlags.Apply(_config.Perf);
 
+                LogConfigSnapshot(_config, "boot");
+
                 DuckovController.UI.Settings.SettingsBridge.Cfg = _config;
                 DuckovController.UI.Settings.SettingsBridge.SettingsPath = _settingsPath;
                 DuckovController.UI.Settings.SettingsBridge.OnRulesChanged -= OnPanelRulesChanged;
@@ -343,11 +345,31 @@ namespace DuckovController
             }
         }
 
+        // Always-on (Log.Info) snapshot of the behavior-driving config fields, emitted on EVERY config
+        // change (boot / file hot-reload / settings-panel edit). Survives DebugLog=false so a future
+        // Player.log always pins exactly what aim/perf state the mod was running — including
+        // Perf.EnableAimDriver, whose stale "false" from a perf bisection silently kills ALL gun assist
+        // (hip/ADS/scope/sniper/throw) while leaving melee snap alive. `why` tags the trigger.
+        private static void LogConfigSnapshot(ControllerConfig c, string why)
+        {
+            if (c == null) return;
+            var aa = c.AutoAim; var br = c.BiasRing; var rc = c.Recoil; var aim = c.Aim; var p = c.Perf;
+            Log.Info($"[cfgsnap] ({why}) tier={aa.Tier} aa.Enabled={aa.Enabled} "
+                + $"maxDist={aa.MaxTargetDistanceMeters:0.#} throughWalls={aa.TargetThroughWalls} "
+                + $"minLockMs={aa.MinLockTimeMs} melee={aa.MeleeMaxTurnDegrees:0.#} | "
+                + $"biasRing.Enabled={br.Enabled} ring={br.RingRadiusPx:0.#} recoil.Enabled={rc.Enabled} | "
+                + $"baselineAssist={aim.BaselineAssistEnabled} magnet={aim.MagnetismEnabled} "
+                + $"slow={aim.SlowdownEnabled} | perf.AimDriver={p.EnableAimDriver} "
+                + $"perf.GameplayInput={p.EnableGameplayInput} perf.Throwables={p.EnableThrowables} "
+                + $"perf.Harmony={p.ApplyHarmonyPatches} | debugLog={c.Diagnostics.DebugLog}");
+        }
+
         private void OnConfigReloaded(ControllerConfig newCfg)
         {
             _config = newCfg;
             Log.Verbose = newCfg.Diagnostics.DebugLog || newCfg.Diagnostics.DevMode;
             DuckovController.Diagnostics.PerfFlags.Apply(newCfg.Perf);
+            LogConfigSnapshot(newCfg, "hot-reload");
             AimDriverPatch.Cfg = newCfg;
             GameplayInputDriverPatch.Cfg = newCfg;
             DuckovController.Throwables.ThrowableController.Cfg = newCfg;
@@ -381,6 +403,7 @@ namespace DuckovController
             if (cfg == null) return;
             Log.Verbose = cfg.Diagnostics.DebugLog || cfg.Diagnostics.DevMode;
             DuckovController.Diagnostics.PerfFlags.Apply(cfg.Perf);
+            LogConfigSnapshot(cfg, "panel-edit");
             AimDriverPatch.Cfg = cfg;
             GameplayInputDriverPatch.Cfg = cfg;
             DuckovController.Throwables.ThrowableController.Cfg = cfg;

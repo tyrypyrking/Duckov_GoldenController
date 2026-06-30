@@ -35,7 +35,8 @@ namespace DuckovController.UI.Prompts
         private Image? _bg;
         private Canvas? _parentCanvas;
         private readonly List<Row> _rows = new();
-        private bool _subscribed;
+        private bool _subscribed;          // Source.OnPromptsChanged
+        private bool _sceneHooksSubscribed; // View.OnActiveViewChanged + LevelManager.OnAfterLevelInitialized
         private bool _dirty;
 
         // Overlay-specific prompts (e.g. the Split dialogue) shown in place of the active view's
@@ -57,6 +58,21 @@ namespace DuckovController.UI.Prompts
 
         private void OnPromptsChanged() => _dirty = true;
 
+        // The active View (and on a raid, the whole UI canvas) can change/be destroyed out from under us.
+        // View.ActiveView is a static cleared only in OnClose, so a LoadSceneMode.Single raid can leave it
+        // pointing at a destroyed View whose canvas is mid-teardown — the per-frame canvas-resolve then
+        // latches a stale handle and the panel can stay hidden forever. Drop the cached canvas/root handles
+        // and force a rebuild under the live canvas next Update. (View.OnActiveViewChanged is parameterless;
+        // read View.ActiveView inside if needed.)
+        private void OnSceneContextChanged()
+        {
+            if (_root != null) { Destroy(_root.gameObject); }
+            _root = null;
+            _rows.Clear();
+            _parentCanvas = null;
+            _dirty = true;
+        }
+
         private void Update()
         {
             // Kill switch: shares the glyph-UI flag with the other glyph injectors.
@@ -69,6 +85,16 @@ namespace DuckovController.UI.Prompts
                 Source.OnPromptsChanged += OnPromptsChanged;
                 _subscribed = true;
                 _dirty = true;
+            }
+
+            // Event-driven reset: a raid (LoadSceneMode.Single) destroys + recreates the UI canvas and Views,
+            // so rebuild on active-view change and on every level (re)load instead of trusting the per-frame
+            // canvas-resolve to self-heal off a possibly-destroyed View.ActiveView.
+            if (!_sceneHooksSubscribed)
+            {
+                Duckov.UI.View.OnActiveViewChanged += OnSceneContextChanged;
+                LevelManager.OnAfterLevelInitialized += OnSceneContextChanged;
+                _sceneHooksSubscribed = true;
             }
 
             // Empty prompts = out of scope (Default verb map returns none for non-item focus).
@@ -87,7 +113,10 @@ namespace DuckovController.UI.Prompts
 
             if (!show) { HidePanel(); return; }
 
-            var canvas = (Duckov.UI.View.ActiveView as Component)?.GetComponentInParent<Canvas>();
+            // includeInactive: the new base View can be ActiveView while its parent canvas is briefly
+            // inactive (scene activation / fade-in) — without this, GetComponentInParent returns null and
+            // the panel drops for that window. Genuinely-null (no canvas at all) still hides + returns.
+            var canvas = (Duckov.UI.View.ActiveView as Component)?.GetComponentInParent<Canvas>(includeInactive: true);
             if (canvas == null) { HidePanel(); return; }
 
             bool canvasChanged = _parentCanvas != canvas;
@@ -112,6 +141,14 @@ namespace DuckovController.UI.Prompts
                 Source.OnPromptsChanged -= OnPromptsChanged;
                 _subscribed = false;
             }
+            // Static-event handlers must be released or they leak across a mod enable/disable cycle
+            // (the GO persists under DontDestroyOnLoad → a re-enable would double-subscribe).
+            if (_sceneHooksSubscribed)
+            {
+                Duckov.UI.View.OnActiveViewChanged -= OnSceneContextChanged;
+                LevelManager.OnAfterLevelInitialized -= OnSceneContextChanged;
+                _sceneHooksSubscribed = false;
+            }
             HidePanel();
         }
 
@@ -119,8 +156,12 @@ namespace DuckovController.UI.Prompts
 
         private void EnsureBuilt(Canvas canvas)
         {
-            if (_root != null && _parentCanvas == canvas) return;
+            // Don't trust the cache: rebuild if the root or cached canvas is null/destroyed, or the live
+            // canvas differs. Unity's == treats a destroyed object as null, so a destroyed _root/_parentCanvas
+            // falls through to the rebuild below; never carry a destroyed handle forward.
+            if (_root != null && _parentCanvas != null && _parentCanvas == canvas) return;
             if (_root != null) { Destroy(_root.gameObject); _root = null; _rows.Clear(); }
+            _parentCanvas = null; // drop any destroyed handle before re-pinning
 
             EnsureBgSprite();
 
@@ -357,6 +398,13 @@ namespace DuckovController.UI.Prompts
 
         private void OnDestroy()
         {
+            // OnDisable runs before OnDestroy and clears these, but guard against a surviving subscription.
+            if (_sceneHooksSubscribed)
+            {
+                Duckov.UI.View.OnActiveViewChanged -= OnSceneContextChanged;
+                LevelManager.OnAfterLevelInitialized -= OnSceneContextChanged;
+                _sceneHooksSubscribed = false;
+            }
             if (_root != null) Destroy(_root.gameObject);
             _root = null;
             _bg = null;

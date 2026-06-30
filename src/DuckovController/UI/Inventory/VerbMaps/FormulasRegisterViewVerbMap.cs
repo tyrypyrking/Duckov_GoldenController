@@ -6,14 +6,15 @@ using UnityEngine;
 
 namespace DuckovController.UI.Inventory.VerbMaps
 {
-    // MasterKeysRegisterView (Duckov.MasterKeys.UI) — the key-registration terminal.
-    // Behaviour is DefaultViewVerbMap (A fast-picks the key into the register slot, Y opens the item
-    // menu, B exits) plus an explicit X = Register that fires submitButton → OnSubmitButtonClicked →
-    // MasterKeysManager.SubmitAndActivate. Firing with an empty register slot is a safe no-op (the
-    // game's handler null-checks the slot content). Horizontal prompt strip matches the trader/craft views.
-    internal sealed class MasterKeysRegisterViewVerbMap : DefaultViewVerbMap
+    // FormulasRegisterView (Duckov.UI) — the blueprint/formula register terminal. Same shape as the
+    // key-register view: A fast-picks a blueprint into the slot, X = Register (submitButton →
+    // OnSubmitButtonClicked → CraftingManager.UnlockFormula, which then shows the StrongNotification
+    // "new craft" popup that GridFocusController.StrongNotification.cs dismisses on A/B). Without this
+    // map the view fell through to DefaultViewVerbMap and showed no hint row unless focus sat on an
+    // inventory entry, so the register affordance was invisible on a gamepad.
+    internal sealed class FormulasRegisterViewVerbMap : DefaultViewVerbMap
     {
-        public override string ViewTypeName => "MasterKeysRegisterView";
+        public override string ViewTypeName => "FormulasRegisterView";
         public override bool HorizontalPrompts => true;
 
         private static readonly PromptEntry[] _prompts = new[]
@@ -28,14 +29,12 @@ namespace DuckovController.UI.Inventory.VerbMaps
             if (router == null) return false;
             var view = View.ActiveView;
             if (view == null) return base.TryX(focus, router);
-            // Fire the register button; consume regardless (no-op when nothing is slotted).
-            router.TryClickViewField(view, "submitButton");
+            router.TryClickViewField(view, "submitButton"); // no-op when nothing is slotted
             return true;
         }
 
         public override IReadOnlyList<PromptEntry> PromptsFor(GameObject? focus, InventoryVerbRouter router) => _prompts;
 
-        // X glyph on the register/submit button.
         private static readonly (string, ButtonGlyph)[] _hints = { ("submitButton", ButtonGlyph.X) };
         public override IReadOnlyList<(string FieldName, ButtonGlyph Glyph)> ButtonGlyphHints() => _hints;
     }

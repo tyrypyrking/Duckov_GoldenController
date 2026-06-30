@@ -9,7 +9,8 @@
 #     DuckovController.dll           (the compiled mod assembly)
 #     0Harmony.dll
 #     info.ini
-#     Settings.json                  (release defaults: AutoAim=Standard, diagnostics off)
+#     Settings.default.json          (release defaults seed: AutoAim=Standard, diagnostics off;
+#                                      loader copies it to Settings.json on first run)
 #     assets/glyphs/...
 #
 # Usage:
@@ -54,17 +55,19 @@ cp "$ROOT/dist/info.ini" "$MOD/info.ini"
 # Mod tile shown in the in-game Mods menu (game loads <mod>/preview.png).
 [ -f "$ROOT/dist/preview.png" ] && cp "$ROOT/dist/preview.png" "$MOD/preview.png"
 
-# Release Settings.json — derived from dist defaults; force the public aim tier and
-# make sure all diagnostics are off in a shipped build.
+# Release Settings.default.json — derived from dist defaults; force the public aim tier and
+# make sure all diagnostics are off in a shipped build. Shipped as a SEED (Settings.default.json),
+# NOT a live Settings.json: the loader copies it to Settings.json on first run, so a drop-in
+# zip extraction can never overwrite a user's tuned config.
 sed -E "s/(\"Tier\": )\"[A-Za-z]+\"/\1\"$RELEASE_AIM_TIER\"/" \
-    "$ROOT/dist/Settings.json" > "$MOD/Settings.json"
+    "$ROOT/dist/Settings.json" > "$MOD/Settings.default.json"
 sed -i -E \
   -e 's/("DevMode": )true/\1false/' \
   -e 's/("DebugLog": )true/\1false/' \
   -e 's/("UIDumperEnabled": )true/\1false/' \
-  "$MOD/Settings.json"
-echo "    Release Settings.json:"
-grep -E '"(Tier|DevMode|DebugLog|UIDumperEnabled)":' "$MOD/Settings.json" | sed 's/^/      /'
+  "$MOD/Settings.default.json"
+echo "    Release Settings.default.json:"
+grep -E '"(Tier|DevMode|DebugLog|UIDumperEnabled)":' "$MOD/Settings.default.json" | sed 's/^/      /'
 
 # User-facing install guide (sits at the zip root, not inside the mod folder).
 cat > "$STAGE/INSTALL.txt" <<'EOF'
@@ -90,13 +93,19 @@ INSTALL
        Escape from Duckov\Duckov_Data\Mods\GoldenController\DuckovController.dll
        ...\GoldenController\0Harmony.dll
        ...\GoldenController\info.ini
-       ...\GoldenController\Settings.json
+       ...\GoldenController\Settings.default.json
        ...\GoldenController\assets\...
 
 4. Launch the game and plug in a controller.
    If the mod isn't active, enable it in the in-game Mods menu, then restart.
+   On first run the mod writes its own  Settings.json  next to the DLL
+   (copied from Settings.default.json) — that's the file you edit and tune.
 
-UPDATE:    delete the old GoldenController folder, drop in the new one, restart.
+UPDATE:    keep your existing  Settings.json  (your tuned config). Replace
+           everything else in the GoldenController folder with the new files
+           (DuckovController.dll, 0Harmony.dll, info.ini, assets, preview.png,
+           Settings.default.json), then restart. New settings added by an
+           update appear in your Settings.json automatically on next launch.
 UNINSTALL: delete the GoldenController folder.
 
 CONFIGURATION  (Settings.json, next to the DLL - hot-reloads when you save)

@@ -23,17 +23,38 @@ namespace DuckovController.Config
             _path = path;
             try
             {
+                // Overlay user keys onto fresh defaults: present keys win, missing keys keep
+                // their C# default, extra keys are ignored. ObjectCreationHandling.Replace is
+                // CRITICAL — the Auto default APPENDS to already-populated arrays (e.g.
+                // SmartHeal.QueueCancelButtons, SmartTake.IncludeTags), duplicating defaults.
+                var settings = new JsonSerializerSettings
+                {
+                    ObjectCreationHandling = ObjectCreationHandling.Replace,
+                };
+
                 if (!File.Exists(path))
                 {
+                    // First install: seed from a sibling Settings.default.json if the release
+                    // shipped one, else pure C# defaults. Then materialize the file on disk.
                     var fresh = new ControllerConfig();
+                    var defaultPath = Path.Combine(Path.GetDirectoryName(path)!, "Settings.default.json");
+                    if (File.Exists(defaultPath))
+                    {
+                        JsonConvert.PopulateObject(File.ReadAllText(defaultPath), fresh, settings);
+                    }
                     AutoAimTiers.Apply(fresh);
                     Save(fresh, path);
                     return fresh;
                 }
+
                 var text = File.ReadAllText(path);
-                var cfg = JsonConvert.DeserializeObject<ControllerConfig>(text)
-                          ?? new ControllerConfig();
+                var cfg = new ControllerConfig();
+                JsonConvert.PopulateObject(text, cfg, settings);
                 AutoAimTiers.Apply(cfg);
+                // Save the merged config back so newly-introduced keys materialize on disk with
+                // their defaults — the file upgrades in place. Save() stamps _lastReload so the
+                // watcher's debounce swallows the resulting OS change event (no reload loop).
+                Save(cfg, path);
                 return cfg;
             }
             catch (Exception e)
