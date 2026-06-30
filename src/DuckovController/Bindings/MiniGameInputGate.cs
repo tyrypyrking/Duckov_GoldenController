@@ -56,6 +56,16 @@ namespace DuckovController.Bindings
         private GoldMiner? _goldMiner;
         private GoldMinerShopUI? _goldShopUi;
 
+        // Negative-cache TTL for the per-frame singleton lookups below. While in-console these
+        // accessors are hit every frame; an absent/lazy object made each one FindObjectOfType the
+        // whole scene EVERY frame (GoldMinerShopUI uses includeInactive — the costliest variant),
+        // which crater'd the console to ~12fps. Cache the hit forever (Unity's == treats a destroyed
+        // object as null → auto re-scan), and rescan a MISS at most once per TTL window.
+        private const int ScanTtlFrames = 30;   // ~0.5s @60fps
+        private int _goldMinerScanFrame = -999;
+        private int _goldShopScanFrame = -999;
+        private int _vcScanFrame = -999;
+
         // Hide GoldMiner's drifty visual cursor by disabling Graphic(s) — NOT the GameObject — so
         // VirtualCursor.Update keeps raycasting (item highlight via VCT.onEnter still fires). Restored on exit.
         private readonly List<(Graphic g, bool prev)> _hiddenCursorGraphics = new();
@@ -364,19 +374,40 @@ namespace DuckovController.Bindings
             catch (Exception e) { Log.Debug_($"cursor-snap OnClick failed: {e.Message}"); }
         }
 
+        // Resolve the VirtualCursor once; TTL-throttle the miss rescan. Clears _vcRect on a fresh
+        // resolve so SnapCursorTo re-reflects the rect for the new instance.
+        private void EnsureVc()
+        {
+            if (_vc != null) return;
+            if (Time.frameCount - _vcScanFrame < ScanTtlFrames) return;
+            _vcScanFrame = Time.frameCount;
+            _vc = UnityEngine.Object.FindObjectOfType<VirtualCursor>();
+            _vcRect = null;
+        }
+
         // The active GoldMiner mini-game, or null if the current game isn't one.
+        // Hit is cached for the session; a miss rescans at most once per TTL window so a
+        // non-GoldMiner game (or pre-spawn frames) doesn't FindObjectOfType every frame.
         private GoldMiner? GetGoldMiner()
         {
-            if (_goldMiner == null) _goldMiner = UnityEngine.Object.FindObjectOfType<GoldMiner>();
+            if (_goldMiner != null) return _goldMiner;
+            if (Time.frameCount - _goldMinerScanFrame < ScanTtlFrames) return null;
+            _goldMinerScanFrame = Time.frameCount;
+            _goldMiner = UnityEngine.Object.FindObjectOfType<GoldMiner>();
             return _goldMiner;
         }
 
         // True while GoldMiner's between-level shop is accepting input (buy phase),
         // as opposed to active play. Cached incl. inactive so we don't re-scan the
-        // scene every frame during play (the shop UI is inactive then).
+        // scene every frame during play (the shop UI is inactive then). The include-
+        // inactive scan is the costliest variant, so a miss is TTL-throttled.
         private bool IsGoldMinerShopOpen()
         {
-            if (_goldShopUi == null) _goldShopUi = UnityEngine.Object.FindObjectOfType<GoldMinerShopUI>(true);
+            if (_goldShopUi == null && Time.frameCount - _goldShopScanFrame >= ScanTtlFrames)
+            {
+                _goldShopScanFrame = Time.frameCount;
+                _goldShopUi = UnityEngine.Object.FindObjectOfType<GoldMinerShopUI>(true);
+            }
             return _goldShopUi != null && _goldShopUi.isActiveAndEnabled && _goldShopUi.enableInput;
         }
 
@@ -418,7 +449,7 @@ namespace DuckovController.Bindings
         private void SnapCursorTo(VirtualCursorTarget? vct)
         {
             if (vct == null) return;
-            if (_vc == null) { _vc = UnityEngine.Object.FindObjectOfType<VirtualCursor>(); _vcRect = null; }
+            EnsureVc();
             if (_vc == null) return;
             if (_vcRect == null)
             {
@@ -465,7 +496,7 @@ namespace DuckovController.Bindings
         private void HideGoldMinerCursor()
         {
             if (_cursorHidden) return;
-            if (_vc == null) { _vc = UnityEngine.Object.FindObjectOfType<VirtualCursor>(); _vcRect = null; }
+            EnsureVc();
             if (_vc == null) return;
             try
             {

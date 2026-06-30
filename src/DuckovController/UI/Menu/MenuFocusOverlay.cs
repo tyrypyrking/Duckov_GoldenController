@@ -69,6 +69,25 @@ namespace DuckovController.UI.Menu
         // Maps top-column index → last swatch index so tab-cycling restores position.
         private readonly System.Collections.Generic.Dictionary<int, int> _ccSwatchLastIdxByTab = new();
 
+        // Color-picker sub-panel (Item 1): when a CustomFaceUIColorPicker's buttonParent is open, nav is
+        // locked INTO the picker. A=apply+keep-open, X=apply+close, B=revert(open-time color)+close.
+        private Component? _ccOpenPicker;                 // the live CustomFaceUIColorPicker (reflected)
+        private Color _ccPickerOpenColor;                 // CurrentColor captured when the picker opened (B reverts here)
+        private Selectable? _ccPickerFocused;             // focused swatch inside the open picker
+        private NavDir? _ccPickerHeldDir;                 // direction currently held (for hold-to-repeat)
+        private System.Collections.Generic.List<Selectable>? _ccPickerSwatches;
+        private System.Collections.Generic.List<System.Collections.Generic.List<Selectable>>? _ccPickerRows;
+        private FocusOutlineOverlay? _ccPickerOutline;
+        private DuckovController.UI.Prompts.MenuHintPanel? _ccPickerHints;
+        // Reflected picker members (resolved once).
+        private static System.Type? _ccPickerType;
+        private static System.Reflection.FieldInfo? _ccPickerButtonParentField;
+        private static System.Reflection.PropertyInfo? _ccPickerCurrentColorProp;
+        private static System.Reflection.MethodInfo? _ccPickerSetColorMethod;
+        private static System.Reflection.PropertyInfo? _ccPickerBtnColorProp;
+        // All picker components under _ccRoot (refreshed with the CC cache).
+        private static System.Collections.Generic.List<Component>? _ccPickers;
+
         // RS rotation: cached DragHandler is the pointer-event target; active while RS-X > deadzone.
         private static GameObject? _ccDragHandlerGo;
         private bool _ccRotating;
@@ -111,6 +130,24 @@ namespace DuckovController.UI.Menu
         // Reads config so menu nav cadence matches grid controller / MFC. Was hardcoded 0.35/0.12 outlier.
         private static float RepeatDelay => DuckovController.UI.Settings.SettingsBridge.Cfg?.Ui?.NavRepeatDelaySec ?? 0.35f;
         private static float RepeatRate  => DuckovController.UI.Settings.SettingsBridge.Cfg?.Ui?.NavRepeatRateSec ?? 0.08f;
+
+        // Left stick as a virtual d-pad so menu/overlay surfaces accept stick AND d-pad identically.
+        // Sampled exactly once per frame at the top of HandleNav; the Dir* helpers OR it with the
+        // physical d-pad. Menus always unify (no StickAsDpad gate — that flag is gameplay-grid only).
+        private readonly StickDpad _menuStick = new StickDpad();
+
+        private bool DirEdge(Gamepad pad, NavDir d) => DpadButton(pad, d).wasPressedThisFrame || _menuStick.Edge(d);
+        private bool DirHeld(Gamepad pad, NavDir d) => DpadButton(pad, d).isPressed || _menuStick.Held(d);
+
+        private static UnityEngine.InputSystem.Controls.ButtonControl DpadButton(Gamepad pad, NavDir d)
+            => d switch
+            {
+                NavDir.Up   => pad.dpad.up,
+                NavDir.Down => pad.dpad.down,
+                NavDir.Left => pad.dpad.left,
+                _           => pad.dpad.right,
+            };
+
 
         private bool _suppressedNavEvents;
         private bool _savedSendNavigationEvents;
@@ -181,6 +218,10 @@ namespace DuckovController.UI.Menu
             DestroyChevron();
             ClearConfirmGlyphs();
             ClearModWarnGlyph();
+            ClearDifficultyConfirmGlyph();
+            ExitPickerMode();
+            if (_ccPickerOutline != null) { Destroy(_ccPickerOutline); _ccPickerOutline = null; }
+            if (_ccPickerHints != null) { _ccPickerHints.Destroy(); _ccPickerHints = null; }
             _menuRoot = null;
             _effectiveRoot = null;
             _focused = null;
@@ -474,6 +515,7 @@ namespace DuckovController.UI.Menu
                 HandleCancel(pad);
             }
             UpdateChevron();
+            UpdatePickerHints();
         }
 
         // Track suppressed EventSystem ID: a restore against a different instance (scene reload)

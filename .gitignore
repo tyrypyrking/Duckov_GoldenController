@@ -10,6 +10,9 @@ dist/release/
 # contains local host paths — not for public release)
 dist/deck/
 
+# Internal patch trackers (process notes with local paths / dev history — not public)
+PATCH_*.md
+
 # Local IDE / editor state
 .vs/
 .vscode/
